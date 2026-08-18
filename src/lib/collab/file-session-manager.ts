@@ -1,5 +1,6 @@
 import {
   HocuspocusProvider,
+  WebSocketStatus,
   type onStatusParameters,
   type onSyncedParameters,
 } from "@hocuspocus/provider";
@@ -33,11 +34,20 @@ function setSessionStatus(session: FileSession, status: SyncState) {
   useEditorSyncStore.getState().setSyncState(session.fileId, status);
 }
 
+function currentStatus(provider: HocuspocusProvider): SyncState {
+  return provider.isSynced ? "ready" : "loading";
+}
+
 function wireStatus(session: FileSession) {
   session.provider.on("status", ({ status }: onStatusParameters) => {
-    if (status === "connecting") {
+    if (status === WebSocketStatus.Connected) {
+      // After a (re)connect the provider may already be synced (e.g. a
+      // reused session), and "synced" only fires on a false->true
+      // transition, so derive the state from the provider instead.
+      setSessionStatus(session, currentStatus(session.provider));
+    } else if (status === WebSocketStatus.Connecting) {
       setSessionStatus(session, "loading");
-    } else if (status === "disconnected") {
+    } else if (status === WebSocketStatus.Disconnected) {
       setSessionStatus(session, "stale");
     }
   });
@@ -79,6 +89,10 @@ export const fileSessionManager = {
     if (existing) {
       existing.lastUsed = Date.now();
       activeRefs.set(fileId, (activeRefs.get(fileId) ?? 0) + 1);
+      // Reusing a live session: "synced" won't re-fire because the
+      // provider is already synced, so derive the status from its real
+      // state instead of resetting to "loading" and getting stuck.
+      setSessionStatus(existing, currentStatus(existing.provider));
       return existing;
     }
 
@@ -102,7 +116,7 @@ export const fileSessionManager = {
 
     sessions.set(fileId, session);
     activeRefs.set(fileId, 1);
-    useEditorSyncStore.getState().setSyncState(fileId, "loading");
+    setSessionStatus(session, "loading");
     wireStatus(session);
     evictIfNeeded();
     return session;

@@ -17,7 +17,7 @@ import {
   foldGutter,
   foldKeymap,
 } from "@codemirror/language";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap } from "@codemirror/commands";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import {
   autocompletion,
@@ -34,7 +34,6 @@ export const customSetup: Extension = (() => [
   lineNumbers(),
   highlightActiveLineGutter(),
   highlightSpecialChars(),
-  history(),
   foldGutter({
     markerDOM(open) {
       const icon = document.createElement("div");
@@ -60,7 +59,6 @@ export const customSetup: Extension = (() => [
     ...closeBracketsKeymap,
     ...defaultKeymap,
     ...searchKeymap,
-    ...historyKeymap,
     ...foldKeymap,
     ...completionKeymap,
     ...lintKeymap,

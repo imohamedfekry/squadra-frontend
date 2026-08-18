@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { socket } from "../socket";
 import { useFilesStore } from "@/store/file.store";
+import { useEditorSyncStore } from "@/store/editor-sync.store";
+import { fileSessionManager } from "@/lib/collab/file-session-manager";
 import type { ProjectFileType } from "@/lib/api/apis/files/types";
 const SUBSCRIBE_MAX_RETRIES = 5;
 const SUBSCRIBE_RETRY_BASE_MS = 700;
@@ -123,16 +125,33 @@ export const useProjectRealtime = (projectId: string | null | undefined) => {
       const projectId = payload.projectId 
       
       useFilesStore.getState().removeFile(projectId, fileId);
+      fileSessionManager.dispose(fileId);
+      useEditorSyncStore.getState().clearSyncState(fileId);
+    };
+
+    const onContentUpdated = (payload: { fileId: string }) => {
+      const fileId = payload?.fileId;
+      if (!fileId) return;
+
+      const session = fileSessionManager.getSession(fileId);
+      const syncState = useEditorSyncStore.getState().syncStates[fileId];
+
+      if (session && syncState === "ready") return;
+
+      useEditorSyncStore.getState().setSyncState(fileId, "stale");
+      useFilesStore.getState().clearFileContent(fileId);
     };
 
     socket.on("file:created", onCreated);
     socket.on("file:updated", onUpdated);
     socket.on("file:deleted", onDeleted);
+    socket.on("file:content-updated", onContentUpdated);
 
     return () => {
       socket.off("file:created", onCreated);
       socket.off("file:updated", onUpdated);
       socket.off("file:deleted", onDeleted);
+      socket.off("file:content-updated", onContentUpdated);
     };
   }, [projectId]);
 };

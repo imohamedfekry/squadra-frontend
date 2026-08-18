@@ -8,6 +8,7 @@ import { useProjectRealtime } from "@/lib/socket/hooks/useProjectRealtime";
 import { useLoadProject } from "@/lib/hooks/projects/useLoadProject";
 import { useLoadUser } from "@/lib/hooks/user/useLoadUser";
 import { useRealtimeProjects } from "@/lib/socket/hooks/useRealtimeProjects";
+import { fileSessionManager } from "@/lib/collab/file-session-manager";
 import { ProjectNavbar } from "./project-navbar";
 
 export const ProjectIdLayout = ({
@@ -46,6 +47,12 @@ export const ProjectIdLayout = ({
 
     return () => observer.disconnect();
   }, [project?.name]);
+
+  useEffect(() => {
+    return () => {
+      fileSessionManager.disposeProject(projectId);
+    };
+  }, [projectId]);
 
   // Show content once project data is loaded
   // Socket is only for real-time updates, not blocking initial render

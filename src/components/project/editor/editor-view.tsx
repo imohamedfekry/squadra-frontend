@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangleIcon, FileWarningIcon } from "lucide-react";
 import { CodeEditor } from "./code-editor";
 import { FileBreadcrumbs } from "./file-breadcrumbs";
@@ -7,8 +7,11 @@ import { TopNavigation } from "./top-navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEditor } from "@/lib/hooks/use-editor";
 import { useFile, useFileContent } from "@/lib/hooks/file/useFiles";
-
-const DEBOUNCE_MS = 1500;
+import {
+  fileSessionManager,
+  type FileSession,
+} from "@/lib/collab/file-session-manager";
+import { useEditorSyncStore } from "@/store/editor-sync.store";
 
 function isTextContent(contentType: string): boolean {
   const type = contentType.toLowerCase();
@@ -86,6 +89,45 @@ function BinaryFileNotice({ fileName }: { fileName: string }) {
   );
 }
 
+function RealtimeEditor({
+  projectId,
+  fileId,
+  fileName,
+}: {
+  projectId: string;
+  fileId: string;
+  fileName: string;
+}) {
+  const [session, setSession] = useState<FileSession | null>(null);
+  const syncState = useEditorSyncStore(
+    (s) => s.syncStates[fileId] ?? "unloaded",
+  );
+
+  useEffect(() => {
+    const next = fileSessionManager.getOrCreate(fileId, projectId);
+    fileSessionManager.markActive(fileId);
+    setSession(next);
+
+    return () => {
+      fileSessionManager.markActive(fileId);
+      fileSessionManager.release(fileId);
+    };
+  }, [fileId, projectId]);
+
+  if (!session) {
+    return <EditorSkeleton />;
+  }
+
+  return (
+    <CodeEditor
+      fileName={fileName}
+      yText={session.yText}
+      provider={session.provider}
+      syncState={syncState}
+    />
+  );
+}
+
 export const EditorView = ({ projectId }: { projectId: string }) => {
   const { activeTabId } = useEditor(projectId);
   const activeFile = useFile(projectId, activeTabId);
@@ -96,17 +138,7 @@ export const EditorView = ({ projectId }: { projectId: string }) => {
     isActiveFileText ? activeTabId : null,
   );
 
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const timeout = timeoutRef.current;
-
-    return () => {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-    };
-  }, [activeTabId]);
+  const isText = !!content && isTextContent(content.contentType);
 
   return (
     <div className="h-full flex flex-col">
@@ -163,7 +195,7 @@ export const EditorView = ({ projectId }: { projectId: string }) => {
           activeFile.type === "file" &&
           !error &&
           content &&
-          !isTextContent(content.contentType) && (
+          !isText && (
             <BinaryFileNotice fileName={activeFile.name} />
           )}
 
@@ -171,20 +203,12 @@ export const EditorView = ({ projectId }: { projectId: string }) => {
           activeFile.type === "file" &&
           !error &&
           content &&
-          isTextContent(content.contentType) && (
-            <CodeEditor
+          isText && (
+            <RealtimeEditor
               key={activeFile.id}
+              projectId={projectId}
+              fileId={activeFile.id}
               fileName={activeFile.name}
-              initialValue={content.content}
-              onChange={(nextContent) => {
-                if (timeoutRef.current) {
-                  clearTimeout(timeoutRef.current);
-                }
-
-                timeoutRef.current = setTimeout(() => {
-                  console.log("content changed", nextContent.length);
-                }, DEBOUNCE_MS);
-              }}
             />
           )}
       </div>
